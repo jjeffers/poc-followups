@@ -94,45 +94,6 @@ def initialize_db():
     conn.commit()
     conn.close()
 
-def add_customer(name: str, email: str) -> int | None:
-    """Adds a new customer to the CRM database. Returns the new customer_id or None if email exists."""
-    conn = _get_db_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute("INSERT INTO customers (name, email) VALUES (?, ?)", (name, email))
-        conn.commit()
-        # print(f"Customer '{name}' added successfully.") # Removed for cleaner output in tool call
-        return cursor.lastrowid
-    except sqlite3.IntegrityError:
-        # print(f"Error: Customer with email '{email}' already exists.") # Removed for cleaner output
-        return None
-    finally:
-        conn.close()
-
-# MODIFIED: Split get_customer_details into two distinct functions
-def get_customer_details_by_id(customer_id: int) -> dict | None:
-    """
-    Retrieves customer details by customer ID.
-    Returns a dictionary of customer details (customer_id, name, email) or None if not found.
-    """
-    conn = _get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT customer_id, name, email FROM customers WHERE customer_id = ?", (customer_id,))
-    row = cursor.fetchone()
-    conn.close()
-    return dict(row) if row else None
-
-def get_customer_details_by_email(email: str) -> dict | None:
-    """
-    Retrieves customer details by email.
-    Returns a dictionary of customer details (customer_id, name, email) or None if not found.
-    """
-    conn = _get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT customer_id, name, email FROM customers WHERE email = ?", (email,))
-    row = cursor.fetchone()
-    conn.close()
-    return dict(row) if row else None
 
 def log_message(customer_id: int, direction: str, content: str):
     """
@@ -156,20 +117,6 @@ def log_message(customer_id: int, direction: str, content: str):
     finally:
         conn.close()
 
-def get_customer_messages(customer_id):
-    """
-    Retrieves all messages for a given customer_id, ordered by timestamp.
-    Returns a list of dictionaries, each representing a message.
-    """
-    conn = _get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT * FROM messages WHERE customer_id = ? ORDER BY timestamp ASC",
-        (customer_id,)
-    )
-    messages = [dict(row) for row in cursor.fetchall()]
-    conn.close()
-    return messages
 
 ALLOWED_COLUMNS = {"message_id","customer_id","direction", "timestamp", "content", "name", "email"}
 ALLOWED_TABLES = {"messages","customers"}
@@ -235,54 +182,6 @@ def query_table(table: str, sql: str) -> list[dict]:
             pass
 
     return [dict(zip(headers, r)) for r in rows]
-
-def get_customers_with_no_messages():
-    """
-    Retrieves a list of customers who have no messages logged.
-    Returns a dictionary of a status message ("success" or "error") and a list of dictionaries, each representing a customer if successful.
-    """
-    conn = _get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT c.*
-        FROM customers c
-        LEFT JOIN messages m ON c.customer_id = m.customer_id
-        WHERE m.message_id IS NULL
-    ''')
-    customers = [dict(row) for row in cursor.fetchall()]
-    conn.close()
-    return {'status': "success", 'results': customers}
-
-def get_customers_with_last_message_before(datetime_threshold_str: str):
-    """
-    Retrieves customers whose last message was before the specified datetime_threshold.
-    The datetime_threshold should be a string object that can be parsed as a datetime value.
-    Returns a list of dictionaries, each representing a customer.
-    """
-    conn = _get_db_connection()
-    cursor = conn.cursor()
-
-    try:
-        # Parse the string into a datetime object
-        threshold = datetime.fromisoformat(datetime_threshold_str)
-    except ValueError:
-        raise ValueError(f"Invalid datetime format: {datetime_threshold_str}. Expected ISO 8601 format.")
-
-
-    cursor.execute('''
-        SELECT c.*
-        FROM customers c
-        JOIN (
-            SELECT customer_id, MAX(timestamp) AS last_message_time
-            FROM messages
-            GROUP BY customer_id
-        ) AS latest_messages ON c.customer_id = latest_messages.customer_id
-        WHERE latest_messages.last_message_time < ?
-    ''', (datetime_threshold_str,))
-    customers = [dict(row) for row in cursor.fetchall()]
-    conn.close()
-    return customers
-
 
 
 INSTRUCTION = """
